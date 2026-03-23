@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
+  <meta name="theme-color" content="#0f0f0f"/>
+  <meta name="apple-mobile-web-app-capable" content="yes"/>
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+  <meta name="apple-mobile-web-app-title" content="Timer"/>
+  <link rel="manifest" href="manifest.json"/>
+  <link rel="apple-touch-icon" href="icon-192.png"/>
+  <title>1-Minute Timer</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --green: #1D9E75;
+      --bg: #0f0f0f;
+      --surface: #1a1a1a;
+      --border: #2a2a2a;
+      --text: #f0f0f0;
+      --muted: #666;
+    }
+
+    html, body {
+      height: 100%;
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, 'SF Pro Display', 'Helvetica Neue', sans-serif;
+      -webkit-font-smoothing: antialiased;
+      user-select: none;
+      overflow: hidden;
+    }
+
+    body {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100dvh;
+      padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+      gap: 0;
+    }
+
+    .timer-wrap {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 2rem;
+      padding: 2rem 1rem;
+      width: 100%;
+      max-width: 340px;
+    }
+
+    .ring-container {
+      position: relative;
+      width: min(220px, 58vw);
+      height: min(220px, 58vw);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .ring-svg {
+      position: absolute;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+      transform: rotate(-90deg);
+    }
+
+    .ring-track { fill: none; stroke: var(--border); stroke-width: 8; }
+    .ring-fill {
+      fill: none;
+      stroke: var(--green);
+      stroke-width: 8;
+      stroke-linecap: round;
+      transition: stroke-dashoffset 1s linear;
+    }
+
+    .timer-display {
+      font-size: clamp(42px, 12vw, 56px);
+      font-weight: 300;
+      color: var(--text);
+      font-variant-numeric: tabular-nums;
+      letter-spacing: -2px;
+      font-feature-settings: "tnum";
+      z-index: 1;
+    }
+
+    .info-row {
+      display: flex;
+      align-items: center;
+      gap: 1.5rem;
+    }
+
+    .status-row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 13px;
+      color: var(--muted);
+    }
+
+    .status-dot {
+      width: 7px; height: 7px;
+      border-radius: 50%;
+      background: var(--muted);
+      transition: background 0.3s;
+    }
+    .status-dot.running { background: var(--green); box-shadow: 0 0 6px var(--green); }
+
+    .cycle-label {
+      font-size: 13px;
+      color: var(--muted);
+    }
+
+    .btn-row {
+      display: flex;
+      gap: 12px;
+    }
+
+    button {
+      padding: 12px 32px;
+      border-radius: 100px;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      color: var(--text);
+      font-size: 15px;
+      font-family: inherit;
+      cursor: pointer;
+      -webkit-tap-highlight-color: transparent;
+      transition: background 0.15s, transform 0.1s;
+      min-width: 100px;
+    }
+
+    button:active { transform: scale(0.96); background: #252525; }
+
+    #startBtn {
+      background: var(--green);
+      border-color: var(--green);
+      color: #fff;
+      font-weight: 500;
+    }
+    #startBtn:active { background: #179060; }
+
+    .install-banner {
+      position: fixed;
+      bottom: 0;
+      left: 0; right: 0;
+      background: var(--surface);
+      border-top: 1px solid var(--border);
+      padding: 14px 20px calc(14px + env(safe-area-inset-bottom));
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      font-size: 14px;
+      transform: translateY(100%);
+      transition: transform 0.3s ease;
+      z-index: 100;
+    }
+    .install-banner.visible { transform: translateY(0); }
+    .install-banner p { color: var(--muted); flex: 1; }
+    .install-banner p strong { color: var(--text); }
+    .install-btn {
+      padding: 8px 18px;
+      border-radius: 100px;
+      border: 1px solid var(--green);
+      background: transparent;
+      color: var(--green);
+      font-size: 14px;
+      min-width: unset;
+      white-space: nowrap;
+    }
+    .close-btn {
+      background: none;
+      border: none;
+      color: var(--muted);
+      font-size: 20px;
+      min-width: unset;
+      padding: 4px 8px;
+    }
+    .close-btn:active { background: none; }
+  </style>
+</head>
+<body>
+
+<div class="timer-wrap">
+  <div class="ring-container">
+    <svg class="ring-svg" viewBox="0 0 160 160" xmlns="http://www.w3.org/2000/svg">
+      <circle class="ring-track" cx="80" cy="80" r="68"/>
+      <circle class="ring-fill" id="ring" cx="80" cy="80" r="68"/>
+    </svg>
+    <span class="timer-display" id="display">1:00</span>
+  </div>
+
+  <div class="info-row">
+    <div class="status-row">
+      <span class="status-dot" id="dot"></span>
+      <span id="statusText">Ready</span>
+    </div>
+    <div class="cycle-label" id="cycleLabel">Cycle 0</div>
+  </div>
+
+  <div class="btn-row">
+    <button id="startBtn" onclick="toggle()">Start</button>
+    <button onclick="reset()">Reset</button>
+  </div>
+</div>
+
+<div class="install-banner" id="installBanner">
+  <p><strong>Add to Home Screen</strong> for offline use</p>
+  <button class="install-btn" id="installBtn">Install</button>
+  <button class="close-btn" onclick="dismissBanner()">×</button>
+</div>
+
+<script>
+const DURATION = 60;
+const CIRC = 2 * Math.PI * 68;
+const ring = document.getElementById('ring');
+const display = document.getElementById('display');
+const dot = document.getElementById('dot');
+const statusText = document.getElementById('statusText');
+const cycleLabel = document.getElementById('cycleLabel');
+const startBtn = document.getElementById('startBtn');
+
+ring.style.strokeDasharray = CIRC;
+ring.style.strokeDashoffset = 0;
+
+let running = false, cycle = 0, startTime = null, raf = null, lastSecond = -1;
+
+// Audio
+let audioCtx = null;
+function getAudio() {
+  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  return audioCtx;
+}
+function beep() {
+  try {
+    const ctx = getAudio();
+    const o = ctx.createOscillator();
+    const g = ctx.createGain();
+    o.connect(g); g.connect(ctx.destination);
+    o.type = 'sine'; o.frequency.value = 880;
+    g.gain.setValueAtTime(0.5, ctx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.6);
+    o.start(); o.stop(ctx.currentTime + 0.6);
+  } catch(e) {}
+}
+
+// Wake lock
+let wakeLock = null;
+async function acquireWakeLock() {
+  if ('wakeLock' in navigator) {
+    try { wakeLock = await navigator.wakeLock.request('screen'); } catch(e) {}
+  }
+}
+function releaseWakeLock() {
+  if (wakeLock) { wakeLock.release(); wakeLock = null; }
+}
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible' && running) acquireWakeLock();
+});
+
+function setRing(frac) {
+  ring.style.strokeDashoffset = CIRC * (1 - frac);
+}
+function fmt(s) {
+  return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
+}
+
+function tick(ts) {
+  if (!startTime) startTime = ts;
+  const secs = Math.min(Math.floor((ts - startTime) / 1000), DURATION);
+  if (secs !== lastSecond) {
+    lastSecond = secs;
+    const rem = DURATION - secs;
+    display.textContent = fmt(rem);
+    setRing(rem / DURATION);
+    if (secs >= DURATION) {
+      beep();
+      cycle++;
+      cycleLabel.textContent = 'Cycle ' + cycle;
+      startTime = ts;
+      lastSecond = -1;
+    }
+  }
+  if (running) raf = requestAnimationFrame(tick);
+}
+
+function toggle() {
+  if (running) {
+    running = false;
+    cancelAnimationFrame(raf);
+    releaseWakeLock();
+    dot.classList.remove('running');
+    statusText.textContent = 'Paused';
+    startBtn.textContent = 'Resume';
+  } else {
+    // Resume/start from current position
+    const currentDisplay = display.textContent;
+    const [m, s] = currentDisplay.split(':').map(Number);
+    const remainingSecs = m * 60 + s;
+    running = true;
+    startTime = null;
+    lastSecond = -1;
+    // Adjust startTime so ring resumes from current position
+    const elapsed = DURATION - remainingSecs;
+    // We'll offset startTime by elapsed seconds
+    let offsetStart = null;
+    function tickResume(ts) {
+      if (!offsetStart) offsetStart = ts - elapsed * 1000;
+      startTime = offsetStart;
+      tick(ts);
+    }
+    dot.classList.add('running');
+    statusText.textContent = 'Running';
+    startBtn.textContent = 'Pause';
+    acquireWakeLock();
+    raf = requestAnimationFrame(tickResume);
+    return;
+  }
+}
+
+function reset() {
+  running = false;
+  cancelAnimationFrame(raf);
+  releaseWakeLock();
+  cycle = 0; startTime = null; lastSecond = -1;
+  display.textContent = '1:00';
+  setRing(1);
+  dot.classList.remove('running');
+  statusText.textContent = 'Ready';
+  startBtn.textContent = 'Start';
+  cycleLabel.textContent = 'Cycle 0';
+}
+
+// Service Worker
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('./sw.js').catch(() => {});
+}
+
+// PWA Install prompt
+let deferredPrompt = null;
+window.addEventListener('beforeinstallprompt', e => {
+  e.preventDefault();
+  deferredPrompt = e;
+  document.getElementById('installBanner').classList.add('visible');
+});
+
+document.getElementById('installBtn').addEventListener('click', async () => {
+  if (deferredPrompt) {
+    deferredPrompt.prompt();
+    const { outcome } = await deferredPrompt.userChoice;
+    deferredPrompt = null;
+    dismissBanner();
+  }
+});
+
+function dismissBanner() {
+  document.getElementById('installBanner').classList.remove('visible');
+}
+
+// Hide banner if already installed
+if (window.matchMedia('(display-mode: standalone)').matches) {
+  dismissBanner();
+}
+</script>
+</body>
+</html>
