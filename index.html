@@ -227,7 +227,10 @@ const startBtn = document.getElementById('startBtn');
 ring.style.strokeDasharray = CIRC;
 ring.style.strokeDashoffset = 0;
 
-let running = false, cycle = 0, startTime = null, raf = null, lastSecond = -1;
+let running = false, cycle = 0, raf = null;
+// elapsedMs tracks how much of the current cycle has passed (persists across pause/resume)
+let elapsedMs = 0;
+let resumeAt = null; // performance.now() when last resumed
 
 // Audio
 let audioCtx = null;
@@ -238,6 +241,7 @@ function getAudio() {
 function beep() {
   try {
     const ctx = getAudio();
+    if (ctx.state === 'suspended') ctx.resume();
     const o = ctx.createOscillator();
     const g = ctx.createGain();
     o.connect(g); g.connect(ctx.destination);
@@ -245,7 +249,7 @@ function beep() {
     g.gain.setValueAtTime(0.5, ctx.currentTime);
     g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.6);
     o.start(); o.stop(ctx.currentTime + 0.6);
-  } catch(e) {}
+  } catch(e) { console.warn('beep failed', e); }
 }
 
 // Wake lock
@@ -269,27 +273,39 @@ function fmt(s) {
   return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
 }
 
+let lastRenderedSec = -1;
+
 function tick(ts) {
-  if (!startTime) startTime = ts;
-  const secs = Math.min(Math.floor((ts - startTime) / 1000), DURATION);
-  if (secs !== lastSecond) {
-    lastSecond = secs;
-    const rem = DURATION - secs;
+  const totalMs = elapsedMs + (ts - resumeAt);
+  const totalSecs = Math.floor(totalMs / 1000);
+
+  if (totalSecs >= DURATION) {
+    // Cycle complete
+    beep();
+    cycle++;
+    cycleLabel.textContent = 'Cycle ' + cycle;
+    elapsedMs = totalMs % (DURATION * 1000); // carry over remainder
+    resumeAt = ts - elapsedMs; // recalibrate
+    lastRenderedSec = -1;
+  }
+
+  const currentMs = elapsedMs + (ts - resumeAt);
+  const currentSecs = Math.floor(currentMs / 1000);
+  const rem = DURATION - currentSecs;
+
+  if (currentSecs !== lastRenderedSec) {
+    lastRenderedSec = currentSecs;
     display.textContent = fmt(rem);
     setRing(rem / DURATION);
-    if (secs >= DURATION) {
-      beep();
-      cycle++;
-      cycleLabel.textContent = 'Cycle ' + cycle;
-      startTime = ts;
-      lastSecond = -1;
-    }
   }
+
   if (running) raf = requestAnimationFrame(tick);
 }
 
 function toggle() {
   if (running) {
+    // Pause: save how far we got
+    elapsedMs += performance.now() - resumeAt;
     running = false;
     cancelAnimationFrame(raf);
     releaseWakeLock();
@@ -297,28 +313,15 @@ function toggle() {
     statusText.textContent = 'Paused';
     startBtn.textContent = 'Resume';
   } else {
-    // Resume/start from current position
-    const currentDisplay = display.textContent;
-    const [m, s] = currentDisplay.split(':').map(Number);
-    const remainingSecs = m * 60 + s;
+    // Start / Resume
     running = true;
-    startTime = null;
-    lastSecond = -1;
-    // Adjust startTime so ring resumes from current position
-    const elapsed = DURATION - remainingSecs;
-    // We'll offset startTime by elapsed seconds
-    let offsetStart = null;
-    function tickResume(ts) {
-      if (!offsetStart) offsetStart = ts - elapsed * 1000;
-      startTime = offsetStart;
-      tick(ts);
-    }
+    resumeAt = performance.now();
+    lastRenderedSec = -1;
     dot.classList.add('running');
     statusText.textContent = 'Running';
     startBtn.textContent = 'Pause';
     acquireWakeLock();
-    raf = requestAnimationFrame(tickResume);
-    return;
+    raf = requestAnimationFrame(tick);
   }
 }
 
@@ -326,7 +329,7 @@ function reset() {
   running = false;
   cancelAnimationFrame(raf);
   releaseWakeLock();
-  cycle = 0; startTime = null; lastSecond = -1;
+  cycle = 0; elapsedMs = 0; resumeAt = null; lastRenderedSec = -1;
   display.textContent = '1:00';
   setRing(1);
   dot.classList.remove('running');
